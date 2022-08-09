@@ -30,6 +30,8 @@ var setLambdaPowerCounter,
     createLambdaAliasCounter,
     updateLambdaAliasCounter,
     waitForFunctionUpdateCounter,
+    deleteLambdaAliasCounter,
+    deleteLambdaVersionCounter,
     waitForAliasActiveCounter,
     sleepCounter;
 
@@ -86,6 +88,8 @@ describe('Lambda Functions', async() => {
         createLambdaAliasCounter = 0;
         updateLambdaAliasCounter = 0;
         waitForFunctionUpdateCounter = 0;
+        deleteLambdaAliasCounter = 0;
+        deleteLambdaVersionCounter = 0;
         waitForAliasActiveCounter = 0;
         sleepCounter = 0;
 
@@ -106,7 +110,10 @@ describe('Lambda Functions', async() => {
         sandBox.stub(utils, 'getLambdaPower')
             .callsFake(async() => {
                 getLambdaPowerCounter++;
-                return 1024;
+                return {
+                    power: 1024,
+                    envVars: {},
+                };
             });
         setLambdaPowerStub = sandBox.stub(utils, 'setLambdaPower')
             .callsFake(async() => {
@@ -243,6 +250,24 @@ describe('Lambda Functions', async() => {
             expect(waitForFunctionUpdateCounter).to.be(powerValues.length);
         });
 
+        it('should create N*num aliases and versions when onlyColdStarts', async() => {
+            await invokeForSuccess(handler, {
+                lambdaARN: 'arnOK',
+                num: 5,
+                onlyColdStarts: true,
+            });
+
+            const total = powerValues.length * 5;
+
+            // +1 because it will also reset power to its initial value
+            expect(setLambdaPowerCounter).to.be(total + 1);
+
+            expect(getLambdaPowerCounter).to.be(1);
+            expect(publishLambdaVersionCounter).to.be(total);
+            expect(createLambdaAliasCounter).to.be(total);
+            expect(waitForFunctionUpdateCounter).to.be(total);
+        });
+
         it('should explode if something goes wrong during power set', async() => {
             setLambdaPowerStub && setLambdaPowerStub.restore();
             setLambdaPowerStub = sandBox.stub(utils, 'setLambdaPower')
@@ -299,11 +324,13 @@ describe('Lambda Functions', async() => {
             deleteLambdaAliasStub && deleteLambdaAliasStub.restore();
             deleteLambdaAliasStub = sandBox.stub(utils, 'deleteLambdaAlias')
                 .callsFake(async() => {
+                    deleteLambdaAliasCounter++;
                     return 'OK';
                 });
             deleteLambdaVersionStub && deleteLambdaVersionStub.restore();
             deleteLambdaVersionStub = sandBox.stub(utils, 'deleteLambdaVersion')
                 .callsFake(async() => {
+                    deleteLambdaVersionCounter++;
                     return 'OK';
                 });
         });
@@ -312,6 +339,23 @@ describe('Lambda Functions', async() => {
 
         it('should invoke the given cb, when done', async() => {
             await invokeForSuccess(handler, eventOK);
+        });
+
+        it('should delete all versions and aliases', async() => {
+            await invokeForSuccess(handler, eventOK);
+            expect(deleteLambdaAliasCounter).to.be(3);
+            expect(deleteLambdaVersionCounter).to.be(3);
+        });
+
+        it('should delete all versions and aliases, when onlyColdStarts', async() => {
+            await invokeForSuccess(handler, {
+                lambdaARN: 'arnOK',
+                powerValues: ['128', '256', '512'],
+                num: 10,
+                onlyColdStarts: true,
+            });
+            expect(deleteLambdaAliasCounter).to.be(30);
+            expect(deleteLambdaVersionCounter).to.be(30);
         });
 
         it('should work fine even if the version does not exist', async() => {
