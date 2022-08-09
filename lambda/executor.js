@@ -26,6 +26,7 @@ module.exports.handler = async(event, context) => {
         preProcessorARN,
         postProcessorARN,
         discardTopBottom,
+        onlyColdStarts,
         sleepBetweenRunsMs,
     } = await extractDataFromInput(event);
 
@@ -54,6 +55,7 @@ module.exports.handler = async(event, context) => {
         payloads: payloads,
         preARN: preProcessorARN,
         postARN: postProcessorARN,
+        onlyColdStarts: onlyColdStarts,
         sleepBetweenRunsMs: sleepBetweenRunsMs,
     };
 
@@ -132,15 +134,17 @@ const extractDataFromInput = async(event) => {
         preProcessorARN: input.preProcessorARN,
         postProcessorARN: input.postProcessorARN,
         discardTopBottom: discardTopBottom,
+        onlyColdStarts: !!input.onlyColdStarts,
         sleepBetweenRunsMs: sleepBetweenRunsMs,
     };
 };
 
-const runInParallel = async({num, lambdaARN, lambdaAlias, payloads, preARN, postARN}) => {
+const runInParallel = async({num, lambdaARN, lambdaAlias, payloads, preARN, postARN, onlyColdStarts}) => {
     const results = [];
     // run all invocations in parallel ...
     const invocations = utils.range(num).map(async(_, i) => {
-        const {invocationResults, actualPayload} = await utils.invokeLambdaWithProcessors(lambdaARN, lambdaAlias, payloads[i], preARN, postARN);
+        let aliasToInvoke = utils.buildAliasString(lambdaAlias, onlyColdStarts, i);
+        const {invocationResults, actualPayload} = await utils.invokeLambdaWithProcessors(lambdaARN, aliasToInvoke, payloads[i], preARN, postARN);
         // invocation errors return 200 and contain FunctionError and Payload
         if (invocationResults.FunctionError) {
             throw new Error(`Invocation error (running in parallel): ${invocationResults.Payload} with payload ${JSON.stringify(actualPayload)}`);
@@ -152,11 +156,13 @@ const runInParallel = async({num, lambdaARN, lambdaAlias, payloads, preARN, post
     return results;
 };
 
-const runInSeries = async({num, lambdaARN, lambdaAlias, payloads, preARN, postARN, sleepBetweenRunsMs}) => {
+const runInSeries = async({num, lambdaARN, lambdaAlias, payloads, preARN, postARN, onlyColdStarts, sleepBetweenRunsMs }) => {
     const results = [];
+    // reminder: always start from 0 (same as utils.range)
     for (let i = 0; i < num; i++) {
+        let aliasToInvoke = utils.buildAliasString(lambdaAlias, onlyColdStarts, i);
         // run invocations in series
-        const {invocationResults, actualPayload} = await utils.invokeLambdaWithProcessors(lambdaARN, lambdaAlias, payloads[i], preARN, postARN);
+        const {invocationResults, actualPayload} = await utils.invokeLambdaWithProcessors(lambdaARN, aliasToInvoke, payloads[i], preARN, postARN);
         // invocation errors return 200 and contain FunctionError and Payload
         if (invocationResults.FunctionError) {
             throw new Error(`Invocation error (running in series): ${invocationResults.Payload} with payload ${JSON.stringify(actualPayload)}`);
