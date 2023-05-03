@@ -69,9 +69,9 @@ module.exports.verifyAliasExistance = async(lambdaARN, alias) => {
 /**
  * Update power, publish new version, and create/update alias.
  */
-module.exports.createPowerConfiguration = async(lambdaARN, value, alias) => {
+module.exports.createPowerConfiguration = async(lambdaARN, value, alias, snapstart) => {
     try {
-        await utils.setLambdaPower(lambdaARN, value);
+        await utils.setLambdaPower(lambdaARN, value, snapstart);
 
         // wait for functoin update to complete
         await utils.waitForFunctionUpdate(lambdaARN);
@@ -143,6 +143,17 @@ module.exports.getLambdaPower = async(lambdaARN) => {
     return config.MemorySize;
 };
 
+module.exports.isSnapStartSupported = async(lambdaARN) => {
+    console.log('Getting current power value');
+    const params = {
+        FunctionName: lambdaARN,
+        Qualifier: '$LATEST',
+    };
+    const lambda = utils.lambdaClientFromARN(lambdaARN);
+    const config = await lambda.getFunctionConfiguration(params).promise();
+    return (config.Runtime === 'java11' || config.Runtime === 'java17');
+};
+
 /**
  * Retrieve a given Lambda Function's architecture and whether its state is Pending
  */
@@ -175,11 +186,12 @@ module.exports.getLambdaConfig = async(lambdaARN, alias) => {
 /**
  * Update a given Lambda Function's memory size (always $LATEST version).
  */
-module.exports.setLambdaPower = (lambdaARN, value) => {
+module.exports.setLambdaPower = (lambdaARN, value, snapstart) => {
     console.log('Setting power to ', value);
     const params = {
         FunctionName: lambdaARN,
         MemorySize: parseInt(value, 10),
+        SnapStart: (snapstart) ? {ApplyOn: 'PublishedVersions'} : {ApplyOn: 'None'},
     };
     const lambda = utils.lambdaClientFromARN(lambdaARN);
     return lambda.updateFunctionConfiguration(params).promise();
@@ -566,15 +578,24 @@ module.exports.buildVisualizationURL = (stats, baseURL) => {
     stats.sort((p1, p2) => {
         return p1.power - p2.power;
     });
+    const statsWithSnapstart = stats.filter((el) => el.snapstart);
+    const statsWithoutSnapstart = stats.filter((el) => !el.snapstart);
 
-    const sizes = stats.map(p => p.power);
-    const times = stats.map(p => p.duration);
-    const costs = stats.map(p => p.cost);
+    const sizes = statsWithoutSnapstart.map(p => p.power);
+    const times = statsWithoutSnapstart.map(p => p.duration);
+    const costs = statsWithoutSnapstart.map(p => p.cost);
+    const timesSnapStart = statsWithSnapstart.map(p => p.duration);
+    const costsSnapStart = statsWithSnapstart.map(p => p.cost);
 
     const hash = [
         encode(sizes, Int16Array),
         encode(times),
         encode(costs),
+        encode(sizes, Int16Array),
+        encode(timesSnapStart),
+        encode(costsSnapStart),
+        'noSnapStart',
+        'SnapStart',
     ].join(';');
 
     return baseURL + '#' + hash;

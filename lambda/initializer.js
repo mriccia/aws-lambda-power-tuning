@@ -10,22 +10,35 @@ module.exports.handler = async(event, context) => {
 
     const {lambdaARN, num} = event;
     const powerValues = extractPowerValues(event);
+    const aliases = [];
 
     validateInput(lambdaARN, num); // may throw
 
     // fetch initial $LATEST value so we can reset it later
     const initialPower = await utils.getLambdaPower(lambdaARN);
 
+    // check if Lambda environment supports SnapStart
+    // eslint-disable-next-line no-unused-vars
+    const snapStartSupported = await utils.isSnapStartSupported(lambdaARN);
+
     // reminder: configuration updates must run sequentially
     // (otherwise you get a ResourceConflictException)
     for (let value of powerValues){
         const alias = 'RAM' + value;
         await utils.createPowerConfiguration(lambdaARN, value, alias);
+        aliases.push(alias);
+    }
+    if (snapStartSupported){
+        for (let value of powerValues){
+            const alias = 'RAM' + value + 'SNAPSTART';
+            await utils.createPowerConfiguration(lambdaARN, value, alias, true);
+            aliases.push(alias);
+        }
     }
 
     await utils.setLambdaPower(lambdaARN, initialPower);
 
-    return powerValues;
+    return aliases;
 };
 
 const extractPowerValues = (event) => {

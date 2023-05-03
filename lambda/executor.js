@@ -19,6 +19,7 @@ module.exports.handler = async(event, context) => {
     let {
         lambdaARN,
         value,
+        alias,
         num,
         enableParallel,
         payload,
@@ -37,7 +38,7 @@ module.exports.handler = async(event, context) => {
         num = 1;
     }
 
-    const lambdaAlias = 'RAM' + value;
+    const lambdaAlias = alias;
     let results;
 
     // fetch architecture from $LATEST
@@ -72,7 +73,7 @@ module.exports.handler = async(event, context) => {
     // get base cost for Lambda
     const baseCost = utils.lambdaBaseCost(utils.regionFromARN(lambdaARN), architecture);
 
-    return computeStatistics(baseCost, results, value, discardTopBottom);
+    return computeStatistics(baseCost, results, value, discardTopBottom, lambdaAlias);
 };
 
 const validateInput = (lambdaARN, value, num) => {
@@ -123,7 +124,8 @@ const extractDataFromInput = async(event) => {
     const discardTopBottom = extractDiscardTopBottomValue(input);
     const sleepBetweenRunsMs = extractSleepTime(input);
     return {
-        value: parseInt(event.value, 10),
+        alias: event.value,
+        value: event.value.match(/\d+/g)[0],
         lambdaARN: input.lambdaARN,
         num: parseInt(input.num, 10),
         enableParallel: !!input.parallelInvocation,
@@ -169,7 +171,7 @@ const runInSeries = async({num, lambdaARN, lambdaAlias, payloads, preARN, postAR
     return results;
 };
 
-const computeStatistics = (baseCost, results, value, discardTopBottom) => {
+const computeStatistics = (baseCost, results, value, discardTopBottom, lambdaAlias) => {
     // use results (which include logs) to compute average duration ...
 
     const durations = utils.parseLogAndExtractDurations(results);
@@ -188,6 +190,7 @@ const computeStatistics = (baseCost, results, value, discardTopBottom) => {
         averageDuration,
         totalCost,
         value,
+        lambdaAlias,
     };
 
     console.log('Stats: ', stats);

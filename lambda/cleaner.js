@@ -11,8 +11,7 @@ module.exports.handler = async(event, context) => {
 
     validateInput(lambdaARN, powerValues); // may throw
 
-    const ops = powerValues.map(async(value) => {
-        const alias = 'RAM' + value;
+    const ops = powerValues.map(async(alias) => {
         await cleanup(lambdaARN, alias); // may throw
     });
 

@@ -72,6 +72,7 @@ const extractStatistics = (event) => {
         .filter(stat => stat && stat.averageDuration)
         .map(stat => ({
             power: stat.value,
+            snapstart: stat.lambdaAlias.endsWith('SNAPSTART'),
             cost: stat.averagePrice,
             duration: stat.averageDuration,
             totalCost: stat.totalCost,
