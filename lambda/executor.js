@@ -104,7 +104,11 @@ const extractDiscardTopBottomValue = (event) => {
     // extract discardTopBottom used to trim values from average duration
     let discardTopBottom = event.discardTopBottom;
     if (typeof discardTopBottom === 'undefined') {
-        discardTopBottom = 0.2;
+        if (event.onlyColdStarts){
+            discardTopBottom = 0;
+        } else {
+            discardTopBottom = 0.2;
+        }
     }
     // discardTopBottom must be between 0 and 0.4
     return Math.min(Math.max(discardTopBottom, 0.0), 0.4);
