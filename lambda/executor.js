@@ -41,8 +41,9 @@ module.exports.handler = async(event, context) => {
     const lambdaAlias = 'RAM' + value;
     let results;
 
-    // fetch architecture from $LATEST
-    const {architecture, isPending} = await utils.getLambdaConfig(lambdaARN, lambdaAlias);
+    let aliasToInvoke = utils.buildAliasString(lambdaAlias, onlyColdStarts, 0);
+    const {architecture, isPending} = await utils.getLambdaConfig(lambdaARN, aliasToInvoke);
+
     console.log(`Detected architecture type: ${architecture}, isPending: ${isPending}`);
 
     // pre-generate an array of N payloads
@@ -60,7 +61,7 @@ module.exports.handler = async(event, context) => {
     };
 
     // wait if the function/alias state is Pending
-    if (isPending) {
+    if (isPending && !onlyColdStarts) {
         await utils.waitForAliasActive(lambdaARN, lambdaAlias);
         console.log('Alias active');
     }
@@ -144,6 +145,9 @@ const runInParallel = async({num, lambdaARN, lambdaAlias, payloads, preARN, post
     // run all invocations in parallel ...
     const invocations = utils.range(num).map(async(_, i) => {
         let aliasToInvoke = utils.buildAliasString(lambdaAlias, onlyColdStarts, i);
+        if (onlyColdStarts){
+            await utils.waitForAliasActive(lambdaARN, aliasToInvoke);
+        }
         const {invocationResults, actualPayload} = await utils.invokeLambdaWithProcessors(lambdaARN, aliasToInvoke, payloads[i], preARN, postARN);
         // invocation errors return 200 and contain FunctionError and Payload
         if (invocationResults.FunctionError) {
@@ -162,6 +166,9 @@ const runInSeries = async({num, lambdaARN, lambdaAlias, payloads, preARN, postAR
     for (let i = 0; i < num; i++) {
         let aliasToInvoke = utils.buildAliasString(lambdaAlias, onlyColdStarts, i);
         // run invocations in series
+        if (onlyColdStarts){
+            await utils.waitForAliasActive(lambdaARN, aliasToInvoke);
+        }
         const {invocationResults, actualPayload} = await utils.invokeLambdaWithProcessors(lambdaARN, aliasToInvoke, payloads[i], preARN, postARN);
         // invocation errors return 200 and contain FunctionError and Payload
         if (invocationResults.FunctionError) {
