@@ -557,9 +557,15 @@ module.exports.regionFromARN = (arn) => {
     return arn.split(':')[3];
 };
 
+let client;
 module.exports.lambdaClientFromARN = (lambdaARN) => {
-    const region = this.regionFromARN(lambdaARN);
-    return new AWS.Lambda({region});
+    // create a client only once
+    if (typeof client === 'undefined'){
+        const region = this.regionFromARN(lambdaARN);
+        // set Max Retries to 10, increase the retry delay to 300
+        client = new AWS.Lambda({region: region, maxRetries: 10, retryDelayOptions: {base: 300}});
+    }
+    return client;
 };
 
 /**
